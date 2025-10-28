@@ -7,23 +7,23 @@
 </head>
 <body>
   <h1>Master Calculator</h1>
-  <p>App is loading...</p>
   <div id="root"></div>
 
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <!-- React + ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+
+  <!-- Babel so JSX works -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+  <!-- Load your React component from App.jsx -->
+  <script type="text/babel" src="App.jsx"></script>
+
+  <!-- Mount it -->
   <script type="text/babel">
-    // We will paste your App code here later
-
-    function App() {
-      return <div>Master Calculator App Ready</div>;
-    }
-
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
-
 </body>
+
 </html>
