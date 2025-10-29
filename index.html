@@ -4,26 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Master Calculator</title>
+
+  <!-- ✅ Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <h1>Master Calculator</h1>
+<body class="bg-gray-100">
+
   <div id="root"></div>
 
-  <!-- React + ReactDOM -->
-  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <!-- ✅ React + ReactDOM (PRODUCTION builds) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 
-  <!-- Babel so JSX works -->
+  <!-- ✅ Babel for JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- Load your React component from App.jsx -->
+  <!-- ✅ Load your actual app -->
   <script type="text/babel" src="App.jsx"></script>
 
-  <!-- Mount it -->
+  <!-- ✅ Mount the app -->
   <script type="text/babel">
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
-</body>
 
+</body>
 </html>
