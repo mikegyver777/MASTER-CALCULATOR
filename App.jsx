@@ -1,7 +1,29 @@
-import React, { useState } from 'react';
-import { Plus, X, Printer } from 'lucide-react';
+const { useState, useEffect } = React;
 
-export default function App() {
+// simple icon components (no external library)
+const Plus = ({ size=20 }) => <span style={{fontSize:size}}>＋</span>;
+const X = ({ size=20 }) => <span style={{fontSize:size}}>✕</span>;
+const Printer = ({ size=20 }) => <span style={{fontSize:size}}>🖨️</span>;
+
+// localStorage-backed storage so Save/Delete reports work on GitHub Pages
+if (!window.storage) {
+  window.storage = {
+    async list(prefix = '') {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!prefix || (k && k.startsWith(prefix))) keys.push(k);
+      }
+      return { keys };
+    },
+    async get(key) { const value = localStorage.getItem(key); return value ? { value } : null; },
+    async set(key, value) { localStorage.setItem(key, value); return true; },
+    async delete(key) { localStorage.removeItem(key); return true; }
+  };
+}
+
+function App() {
+
   const [calculators, setCalculators] = useState([{
     id: 1,
     customerName: '',
