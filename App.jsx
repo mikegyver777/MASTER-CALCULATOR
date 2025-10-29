@@ -1,33 +1,24 @@
-/* App.jsx — Tailwind + UMD (no imports/exports). 
-   Fixes: focus preservation (caret doesn’t jump) + full print views. */
-function App() {
-  const { useState, useEffect, useRef } = React;
+import React, { useState } from 'react';
+import { Plus, X, Printer } from 'lucide-react';
 
-  // --- simple localStorage adapter (if not provided) ---
-  if (!window.storage) {
-    window.storage = {
-      async list(prefix = "") {
-        const keys = Object.keys(localStorage).filter(k => k.startsWith(prefix));
-        return { keys };
-      },
-      async get(key) { return { value: localStorage.getItem(key) }; },
-      async set(key, value) { localStorage.setItem(key, value); },
-      async delete(key) { localStorage.removeItem(key); }
-    };
-  }
-
-  // --- focus refs (fixes cursor disappearing) ---
-  const inputRefs = useRef({}); // key: `${i}.${field}` -> HTMLInputElement
-
+export default function App() {
   const [calculators, setCalculators] = useState([{
     id: 1,
-    customerName: '', jobNumber: '',
-    contractAmount: '', cashCheck: '',
-    financeAmount: '', dealerFee: '',
-    creditCard: '', creditCardFee: '',
-    houseFeePercent: '', laborMaterial: '',
-    rideAlong: '', rideAlongBonus: '',
-    numRideAlongs: '', numVets: '', numReps: ''
+    customerName: '',
+    jobNumber: '',
+    contractAmount: '',
+    cashCheck: '',
+    financeAmount: '',
+    dealerFee: '',
+    creditCard: '',
+    creditCardFee: '',
+    houseFeePercent: '',
+    laborMaterial: '',
+    rideAlong: '',
+    rideAlongBonus: '',
+    numRideAlongs: '',
+    numVets: '',
+    numReps: ''
   }]);
 
   const [showReport, setShowReport] = useState(false);
@@ -38,365 +29,432 @@ function App() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [printSingleCalc, setPrintSingleCalc] = useState(null);
 
-  useEffect(() => { loadSavedReports(); }, []);
+  // Load saved reports on mount
+  React.useEffect(() => {
+    loadSavedReports();
+  }, []);
 
-  async function loadSavedReports() {
+  const loadSavedReports = async () => {
     try {
       const result = await window.storage.list('report:');
-      const reports = [];
-      for (const key of (result.keys || [])) {
-        try {
-          const data = await window.storage.get(key);
-          if (data && data.value) reports.push({ key, ...JSON.parse(data.value) });
-        } catch {}
+      if (result && result.keys) {
+        const reports = [];
+        for (const key of result.keys) {
+          try {
+            const data = await window.storage.get(key);
+            if (data && data.value) {
+              const parsed = JSON.parse(data.value);
+              reports.push({ key, ...parsed });
+            }
+          } catch (e) {
+            console.log('Error loading report:', e);
+          }
+        }
+        setSavedReports(reports);
       }
-      setSavedReports(reports);
-    } catch { setSavedReports([]); }
-  }
+    } catch (error) {
+      console.log('No saved reports yet');
+      setSavedReports([]);
+    }
+  };
 
-  async function saveReport() {
-    if (!reportName.trim()) { alert('Please enter a report name'); return; }
+  const saveReport = async () => {
+    if (!reportName.trim()) {
+      alert('Please enter a report name');
+      return;
+    }
+    
     try {
       const timestamp = new Date().toISOString();
-      const reportData = { name: reportName, date: timestamp, calculators };
+      const reportData = {
+        name: reportName,
+        date: timestamp,
+        calculators: calculators
+      };
+      
       const key = `report:${Date.now()}`;
       await window.storage.set(key, JSON.stringify(reportData));
-      setShowSaveDialog(false); setReportName('');
+      
+      setShowSaveDialog(false);
+      setReportName('');
       await loadSavedReports();
       alert('Report saved successfully!');
-    } catch (e) {
-      alert('Error saving report: ' + e.message);
+    } catch (error) {
+      alert('Error saving report: ' + error.message);
     }
-  }
+  };
 
-  function loadReport(report) {
+  const loadReport = (report) => {
     setCalculators(report.calculators);
     setShowSavedReports(false);
-  }
+  };
 
-  async function deleteReport(key) {
+  const deleteReport = async (key) => {
     try {
-      setSavedReports(savedReports.filter(r => r.key !== key));
+      // First update the UI
+      const updatedReports = savedReports.filter(report => report.key !== key);
+      setSavedReports(updatedReports);
+      
+      // Then try to delete from storage
       await window.storage.delete(key);
+      
       setDeleteConfirm(null);
       alert('Report deleted!');
-    } catch (e) {
-      alert('Error deleting report: ' + e.message);
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Error deleting report: ' + error.message);
+      // Reload to show true state
       loadSavedReports();
       setDeleteConfirm(null);
     }
-  }
+  };
 
-  const formatCurrency = v =>
-    isNaN(v) ? '$0.00' :
-    new Intl.NumberFormat('en-US', { style:'currency', currency:'USD', minimumFractionDigits:2 }).format(v);
+  const formatCurrency = (value) => {
+    if (isNaN(value)) return '$0.00';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2
+    }).format(value);
+  };
 
-  const parseValue = v => {
-    if (v === '' || v == null) return 0;
-    const p = parseFloat(String(v).replace(/[,$]/g, ''));
-    return isNaN(p) ? 0 : p;
+  const parseValue = (value) => {
+    if (!value || value === '') return 0;
+    const parsed = parseFloat(value.toString().replace(/[,$]/g, ''));
+    return isNaN(parsed) ? 0 : parsed;
   };
 
   const parseFee = (amount, fee) => {
-    if (!fee) return 0;
-    const s = String(fee).trim();
-    const percent = parseFloat(s.replace('%','')) || 0;
-    const amt = parseValue(amount);
-    return Math.round((amt * percent / 100) * 100) / 100;
+    if (!fee || fee === '') return 0;
+    const amountVal = parseValue(amount);
+    const feeStr = fee.toString().trim();
+    
+    // Remove % symbol if present, then treat as percentage
+    const percent = parseFloat(feeStr.replace('%', '')) || 0;
+    const feeAmount = (amountVal * percent) / 100;
+    // Round to 2 decimal places
+    return Math.round(feeAmount * 100) / 100;
   };
 
-  function calculateForOne(d) {
-    const contractAmount = parseValue(d.contractAmount);
-    const houseFeeAmount = contractAmount * (parseValue(d.houseFeePercent)/100);
-
-    const dealerFeeAmount = parseFee(d.financeAmount, d.dealerFee);
-    const creditCardFeeAmount = parseFee(d.creditCard, d.creditCardFee);
-
-    const totalPayments = parseValue(d.cashCheck) + parseValue(d.financeAmount) + parseValue(d.creditCard);
-    const afterHouseFee = totalPayments - houseFeeAmount;
-    const totalAfterFees = afterHouseFee - parseValue(d.laborMaterial);
+  const calculateForOne = (data) => {
+    const contractAmount = parseValue(data.contractAmount);
+    const houseFeePercent = parseValue(data.houseFeePercent);
+    const houseFeeAmount = (contractAmount * houseFeePercent) / 100;
+    
+    const dealerFeeAmount = parseFee(data.financeAmount, data.dealerFee);
+    const creditCardFeeAmount = parseFee(data.creditCard, data.creditCardFee);
+    
+    const afterHouseFee = contractAmount - houseFeeAmount;
+    const totalAfterFees = afterHouseFee - parseValue(data.laborMaterial) - dealerFeeAmount;
+    const afterJobCost = totalAfterFees;
     const percentOfContract = afterHouseFee > 0 ? (totalAfterFees / afterHouseFee) * 100 : 0;
 
-    let vetRate = 25; if (percentOfContract >= 50) vetRate = 55; else if (percentOfContract >= 40) vetRate = 45; else if (percentOfContract >= 33) vetRate = 35;
-    let repRate = 20; if (percentOfContract >= 50) repRate = 40; else if (percentOfContract >= 40) repRate = 30; else if (percentOfContract >= 33) repRate = 25;
+    let vetRate = 25;
+    if (percentOfContract >= 50) vetRate = 55;
+    else if (percentOfContract >= 40) vetRate = 45;
+    else if (percentOfContract >= 33) vetRate = 35;
 
-    const vets = parseValue(d.numVets);
-    const reps = parseValue(d.numReps);
-    const people = vets + reps;
+    let repRate = 20;
+    if (percentOfContract >= 50) repRate = 40;
+    else if (percentOfContract >= 40) repRate = 30;
+    else if (percentOfContract >= 33) repRate = 25;
 
-    const vetCommissionTotal = totalAfterFees * (vetRate/100);
-    const repCommissionTotal = totalAfterFees * (repRate/100);
+    const vetsCount = parseValue(data.numVets);
+    const repsCount = parseValue(data.numReps);
+    const totalPeople = vetsCount + repsCount;
 
-    const perVetPayout = people ? (vetCommissionTotal / people) : 0;
-    const perRepPayout = people ? (repCommissionTotal / people) : 0;
+    const vetCommissionTotal = (totalAfterFees * vetRate) / 100;
+    const repCommissionTotal = (totalAfterFees * repRate) / 100;
 
-    const rideAlongFeeAmount = parseValue(d.rideAlong);
-    const rideAlongBonusAmount = parseValue(d.rideAlongBonus);
-    const perPersonRA = people ? rideAlongFeeAmount / people : 0;
+    const perVetPayout = totalPeople > 0 ? (vetCommissionTotal / totalPeople) : 0;
+    const perRepPayout = totalPeople > 0 ? (repCommissionTotal / totalPeople) : 0;
 
-    const dealerFeePerPerson = people ? dealerFeeAmount / people : 0;
-    const creditCardFeePerPerson = people ? creditCardFeeAmount / people : 0;
+    const rideAlongFeeAmount = parseValue(data.rideAlong);
+    const rideAlongFeePerPerson = totalPeople > 0 ? rideAlongFeeAmount / totalPeople : 0;
+    
+    const creditCardFeePerPerson = totalPeople > 0 ? creditCardFeeAmount / totalPeople : 0;
+    
+    const finalPerVetPayout = perVetPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
+    const finalPerRepPayout = perRepPayout - rideAlongFeePerPerson - creditCardFeePerPerson;
+    const finalTotalVetsPayout = finalPerVetPayout * vetsCount;
+    const finalTotalRepsPayout = finalPerRepPayout * repsCount;
 
-    const finalPerVetPayout = perVetPayout - perPersonRA - dealerFeePerPerson - creditCardFeePerPerson;
-    const finalPerRepPayout = perRepPayout - perPersonRA - dealerFeePerPerson - creditCardFeePerPerson;
-
-    const finalTotalVetsPayout = finalPerVetPayout * vets;
-    const finalTotalRepsPayout = finalPerRepPayout * reps;
-    const combinedPayout = finalTotalVetsPayout + finalTotalRepsPayout;
-
+    const rideAlongBonusAmount = parseValue(data.rideAlongBonus);
     const totalRideAlongPayout = rideAlongFeeAmount + rideAlongBonusAmount;
-
-    const numRideAlongs = parseValue(d.numRideAlongs);
+    const numRideAlongs = parseValue(data.numRideAlongs);
     const perRideAlongPayout = numRideAlongs > 0 ? (totalRideAlongPayout / numRideAlongs) : 0;
 
-    const profit = totalAfterFees - finalTotalVetsPayout - finalTotalRepsPayout - totalRideAlongPayout;
+    return {
+      houseFeeAmount,
+      dealerFeeAmount,
+      totalAfterFees: afterJobCost,
+      afterJobCost,
+      percentOfContract,
+      vetRate,
+      repRate,
+      perVetPayout,
+      perRepPayout,
+      rideAlongFeePerPerson,
+      creditCardFeePerPerson,
+      finalPerVetPayout,
+      finalPerRepPayout,
+      finalTotalVetsPayout,
+      finalTotalRepsPayout,
+      combinedPayout: finalTotalVetsPayout + finalTotalRepsPayout,
+      totalRideAlongPayout,
+      perRideAlongPayout
+    };
+  };
+
+  const calculateTotals = () => {
+    let totalVetPayout = 0;
+    let totalRepPayout = 0;
+    let totalRideAlongPayout = 0;
+    let totalAfterFees = 0;
+
+    calculators.forEach(data => {
+      const calc = calculateForOne(data);
+      totalVetPayout += calc.finalTotalVetsPayout;
+      totalRepPayout += calc.finalTotalRepsPayout;
+      totalRideAlongPayout += calc.totalRideAlongPayout;
+      totalAfterFees += calc.totalAfterFees;
+    });
+
+    const totalProfit = totalAfterFees - totalVetPayout - totalRepPayout - totalRideAlongPayout;
 
     return {
-      houseFeeAmount, totalAfterFees, percentOfContract,
-      vetRate, repRate, perVetPayout, perRepPayout,
-      rideAlongFeePerPerson: perPersonRA,
-      dealerFeePerPerson, creditCardFeePerPerson,
-      finalPerVetPayout, finalPerRepPayout,
-      finalTotalVetsPayout, finalTotalRepsPayout,
-      combinedPayout, totalRideAlongPayout, perRideAlongPayout, profit,
-      afterJobCost: totalAfterFees
+      totalVetPayout,
+      totalRepPayout,
+      totalCombinedPayout: totalVetPayout + totalRepPayout,
+      totalRideAlongPayout,
+      totalProfit
     };
-  }
-
-  function calculateTotals() {
-    let totalVetPayout = 0, totalRepPayout = 0, totalRideAlongPayout = 0, totalAfterFees = 0;
-    calculators.forEach(d => {
-      const c = calculateForOne(d);
-      totalVetPayout += c.finalTotalVetsPayout;
-      totalRepPayout += c.finalTotalRepsPayout;
-      totalRideAlongPayout += c.totalRideAlongPayout;
-      totalAfterFees += c.totalAfterFees;
-    });
-    const totalProfit = totalAfterFees - totalVetPayout - totalRepPayout - totalRideAlongPayout;
-    return { totalVetPayout, totalRepPayout, totalCombinedPayout: totalVetPayout + totalRepPayout, totalRideAlongPayout, totalProfit };
-  }
+  };
 
   const totals = calculateTotals();
 
-  // --- focus-preserving update (fixes caret disappearing) ---
-  function update(i, field, nextValue, evt) {
-    // Remember caret position & element
-    let selStart=null, selEnd=null, key=null;
-    if (evt && evt.target && evt.target.selectionStart != null) {
-      selStart = evt.target.selectionStart;
-      selEnd   = evt.target.selectionEnd;
-    }
-    key = `${i}.${field}`;
-
-    // Update state
-    setCalculators(prev => {
-      const next = prev.slice();
-      next[i] = { ...next[i], [field]: nextValue };
-      return next;
-    });
-
-    // Restore focus + selection on next frame
-    requestAnimationFrame(() => {
-      const el = inputRefs.current[key];
-      if (el && document.activeElement !== el) {
-        el.focus({ preventScroll: true });
-        if (selStart != null && selEnd != null) {
-          try { el.setSelectionRange(selStart, selEnd); } catch {}
-        }
-      }
-    });
-  }
-
-  // Button
-  const Btn = ({className='', ...p}) =>
-    <button {...p} className={`font-bold rounded-lg px-4 py-3 text-white ${className}`} />;
-
-  // Inputs (wire ref keys so we can restore focus)
-  const MoneyInput = ({i, field, label, value, onChange}) => (
-    <div>
-      <label className="block text-sm font-bold mb-2">{label}</label>
-      <div className="flex items-center bg-white border-2 rounded px-3 py-3">
-        <span className="mr-2">$</span>
-        <input
-          ref={el => inputRefs.current[`${i}.${field}`] = el}
-          className="w-full text-right focus:outline-none"
-          value={value||''}
-          onChange={e=>onChange(e.target.value.replace(/[^0-9.]/g,''), e)}
-          type="text"
-        />
-      </div>
-    </div>
-  );
-
-  const TextInput = ({i, field, label, value, onChange, placeholder, right}) => (
-    <div>
-      <label className="block text-sm font-bold mb-2">{label}</label>
-      <div className="flex items-center bg-white border-2 rounded px-3 py-3">
-        <input
-          ref={el => inputRefs.current[`${i}.${field}`] = el}
-          className="w-full text-right focus:outline-none"
-          value={value||''}
-          placeholder={placeholder||''}
-          onChange={e=>onChange(e.target.value, e)}
-          type="text"
-        />
-        {right ? <span className="ml-2">{right}</span> : null}
-      </div>
-    </div>
-  );
-
-  const PlainTextInput = ({i, field, label, value, onChange, placeholder}) => (
-    <div>
-      <label className="text-sm font-bold text-gray-700 mb-1 block">{label}</label>
-      <input
-        ref={el => inputRefs.current[`${i}.${field}`] = el}
-        className="w-full border-2 border-gray-300 px-3 py-2 rounded"
-        value={value||''}
-        placeholder={placeholder||''}
-        onChange={e=>onChange(e.target.value, e)}
-        type="text"
-      />
-    </div>
-  );
-
-  const NumberInput = ({i, field, label, value, onChange}) => (
-    <div>
-      <label className="block text-sm font-bold mb-2">{label}</label>
-      <input
-        ref={el => inputRefs.current[`${i}.${field}`] = el}
-        className="w-full text-center text-xl border-2 rounded px-3 py-3"
-        value={value||''}
-        onChange={e=>onChange(e.target.value.replace(/[^0-9]/g,''), e)}
-        type="text"
-      />
-    </div>
-  );
-
-  // UI blocks
-  function Labeled({label, children}) {
-    return (
-      <div>
-        <label className="text-sm font-bold text-gray-700 mb-1 block">{label}</label>
-        {children}
-      </div>
-    );
-  }
-  function Section({title, color, children}) {
-    const border = {
-      blue:'border-blue-400', green:'border-green-400', orange:'border-orange-400', purple:'border-purple-400', yellow:'border-yellow-400'
-    }[color] || 'border-blue-400';
-    const text = {
-      blue:'text-blue-900', green:'text-green-900', orange:'text-orange-900', purple:'text-purple-900', yellow:'text-yellow-900'
-    }[color] || 'text-blue-900';
-    return (
-      <div className={`bg-white border-4 ${border} rounded-lg p-4`}>
-        <h3 className={`text-xl font-bold ${text} mb-4 text-center`}>{title}</h3>
-        {children}
-      </div>
-    );
-  }
-  function Summary({title, value, bg}) {
-    return (
-      <div className={`bg-gradient-to-br ${bg} p-6 rounded-lg shadow-lg text-white`}>
-        <div className="text-sm font-bold mb-2">{title}</div>
-        <div className="text-3xl font-bold">{value}</div>
-      </div>
-    );
-  }
-  function Box({label, value}) {
-    return (
-      <div className="bg-white rounded-lg p-4 border-2 text-center">
-        <div className="text-sm font-bold mb-2">{label}</div>
-        <div className="text-3xl font-bold">{value}</div>
-      </div>
-    );
-  }
-
-  const totalsData = totals; // alias for print usage
-
-  // -------- RENDER --------
   return (
     <div className="min-h-screen bg-gray-100 p-4">
-      {/* Delete confirm */}
+      <style>
+        {`
+          @media print {
+            @page {
+              size: legal;
+              margin: 0.25in;
+            }
+            body {
+              print-color-adjust: exact;
+              -webkit-print-color-adjust: exact;
+            }
+            .no-print {
+              display: none !important;
+            }
+            .print-report {
+              font-size: 7px !important;
+            }
+            .print-report h1 {
+              font-size: 12px !important;
+              margin-bottom: 8px !important;
+            }
+            .print-report table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            .print-report th {
+              font-size: 6px !important;
+              padding: 2px !important;
+            }
+            .print-report td {
+              font-size: 6px !important;
+              padding: 1px 2px !important;
+            }
+            .print-single-calc {
+              font-size: 8px !important;
+            }
+            .print-single-calc h1 {
+              font-size: 14px !important;
+              margin-bottom: 6px !important;
+            }
+            .print-single-calc h2 {
+              font-size: 11px !important;
+            }
+            .print-single-calc h3 {
+              font-size: 10px !important;
+              margin-bottom: 4px !important;
+            }
+            .print-single-calc label {
+              font-size: 7px !important;
+              margin-bottom: 2px !important;
+            }
+            .print-single-calc .text-3xl {
+              font-size: 14px !important;
+            }
+            .print-single-calc .text-2xl {
+              font-size: 12px !important;
+            }
+            .print-single-calc .text-xl {
+              font-size: 10px !important;
+            }
+            .print-single-calc .text-lg {
+              font-size: 9px !important;
+            }
+            .print-single-calc .text-sm {
+              font-size: 7px !important;
+            }
+            .print-single-calc .text-xs {
+              font-size: 6px !important;
+            }
+            .print-single-calc .p-4 {
+              padding: 6px !important;
+            }
+            .print-single-calc .p-6 {
+              padding: 8px !important;
+            }
+            .print-single-calc .mb-4 {
+              margin-bottom: 6px !important;
+            }
+            .print-single-calc .mb-3 {
+              margin-bottom: 4px !important;
+            }
+            .print-single-calc .mb-2 {
+              margin-bottom: 2px !important;
+            }
+            .print-single-calc .gap-4 {
+              gap: 6px !important;
+            }
+          }
+        `}
+      </style>
+
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
             <h2 className="text-2xl font-bold mb-4">Confirm Delete</h2>
             <p className="mb-6">Are you sure you want to delete this report?</p>
             <div className="flex gap-3">
-              <Btn className="bg-red-600 hover:bg-red-700 flex-1" onClick={()=>deleteReport(deleteConfirm)}>Delete</Btn>
-              <Btn className="bg-gray-600 hover:bg-gray-700 flex-1" onClick={()=>setDeleteConfirm(null)}>Cancel</Btn>
+              <button
+                onClick={() => deleteReport(deleteConfirm)}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Save dialog */}
       {showSaveDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
             <h2 className="text-2xl font-bold mb-4">Save Report</h2>
             <label className="block text-sm font-bold mb-2">Report Name</label>
-            <input className="w-full border-2 border-gray-300 px-3 py-2 rounded mb-4"
-                   value={reportName} onChange={e=>setReportName(e.target.value)} />
+            <input
+              type="text"
+              value={reportName}
+              onChange={(e) => setReportName(e.target.value)}
+              className="w-full border-2 border-gray-300 px-3 py-2 rounded mb-4"
+              placeholder="Enter report name"
+            />
             <div className="flex gap-3">
-              <Btn className="bg-green-600 hover:bg-green-700 flex-1" onClick={saveReport}>Save</Btn>
-              <Btn className="bg-gray-600 hover:bg-gray-700 flex-1" onClick={()=>{setShowSaveDialog(false); setReportName('');}}>Cancel</Btn>
+              <button
+                onClick={saveReport}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => {
+                  setShowSaveDialog(false);
+                  setReportName('');
+                }}
+                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Saved Reports */}
       {showSavedReports && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-screen overflow-y-auto">
             <h2 className="text-2xl font-bold mb-4">Saved Reports</h2>
             {savedReports.length === 0 ? (
               <p className="text-gray-600 mb-4">No saved reports yet.</p>
             ) : (
               <div className="space-y-3 mb-4">
-                {savedReports.map(r => (
-                  <div key={r.key} className="border-2 border-gray-300 rounded-lg p-4 flex justify-between items-center">
+                {savedReports.map((report) => (
+                  <div key={report.key} className="border-2 border-gray-300 rounded-lg p-4 flex justify-between items-center">
                     <div>
-                      <div className="font-bold text-lg">{r.name}</div>
-                      <div className="text-sm text-gray-600">{new Date(r.date).toLocaleString()} • {r.calculators.length} calculator(s)</div>
+                      <div className="font-bold text-lg">{report.name}</div>
+                      <div className="text-sm text-gray-600">
+                        {new Date(report.date).toLocaleString()} • {report.calculators.length} calculator(s)
+                      </div>
                     </div>
                     <div className="flex gap-2">
-                      <Btn className="bg-blue-600 hover:bg-blue-700" onClick={()=>loadReport(r)}>Load</Btn>
-                      <Btn className="bg-red-600 hover:bg-red-700" onClick={()=>setDeleteConfirm(r.key)}>Delete</Btn>
+                      <button
+                        onClick={() => loadReport(report)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+                      >
+                        Load
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeleteConfirm(report.key);
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-            <Btn className="bg-gray-600 hover:bg-gray-700 w-full" onClick={()=>setShowSavedReports(false)}>Close</Btn>
+            <button
+              onClick={() => setShowSavedReports(false)}
+              className="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
-
-      {/* PRINT: single calculator view */}
       {printSingleCalc !== null && (
         <div className="print-single-calc bg-white p-6">
           <h1 className="text-2xl font-bold text-center mb-4">ALTA CAL PROFIT SHARE - CALCULATOR #{printSingleCalc + 1}</h1>
+          
           {(() => {
             const calc = calculators[printSingleCalc];
             const data = calculateForOne(calc);
             const profit = data.afterJobCost - data.finalTotalVetsPayout - data.finalTotalRepsPayout - data.totalRideAlongPayout;
-            const pv = v => formatCurrency(parseValue(v));
+            
             return (
               <div>
                 <div className="grid grid-cols-2 gap-4 mb-4 bg-gray-100 p-4 rounded">
-                  <div><span className="font-semibold">Customer Name:</span> <span className="font-bold text-lg">{calc.customerName || 'N/A'}</span></div>
-                  <div><span className="font-semibold">Job Number:</span> <span className="font-bold text-lg">{calc.jobNumber || 'N/A'}</span></div>
+                  <div>
+                    <span className="font-semibold">Customer Name:</span> <span className="font-bold text-lg">{calc.customerName || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold">Job Number:</span> <span className="font-bold text-lg">{calc.jobNumber || 'N/A'}</span>
+                  </div>
                 </div>
 
                 <div className="mb-4 bg-blue-50 border-2 border-blue-400 rounded p-4">
                   <h3 className="font-bold text-lg mb-2">CONTRACT & PAYMENT</h3>
                   <div className="grid grid-cols-3 gap-4">
-                    <div><strong>Contract Amount:</strong> {pv(calc.contractAmount)}</div>
-                    <div><strong>Cash/Check:</strong> {pv(calc.cashCheck)}</div>
-                    <div><strong>Labor & Material:</strong> {pv(calc.laborMaterial)}</div>
+                    <div><strong>Contract Amount:</strong> {formatCurrency(parseValue(calc.contractAmount))}</div>
+                    <div><strong>Cash/Check:</strong> {formatCurrency(parseValue(calc.cashCheck))}</div>
+                    <div><strong>Labor & Material:</strong> {formatCurrency(parseValue(calc.laborMaterial))}</div>
                   </div>
                 </div>
 
@@ -404,11 +462,11 @@ function App() {
                   <h3 className="font-bold text-lg mb-2">FINANCE INFO</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <div><strong>Finance Amount:</strong> {pv(calc.financeAmount)}</div>
-                      <div><strong>Dealer Fee:</strong> {calc.dealerFee || 'N/A'} ({formatCurrency(parseFee(calc.financeAmount, calc.dealerFee))})</div>
+                      <div><strong>Finance Amount:</strong> {formatCurrency(parseValue(calc.financeAmount))}</div>
+                      <div><strong>Dealer Fee:</strong> {calc.dealerFee || 'N/A'} ({formatCurrency(data.dealerFeeAmount)})</div>
                     </div>
                     <div>
-                      <div><strong>Credit Card:</strong> {pv(calc.creditCard)}</div>
+                      <div><strong>Credit Card:</strong> {formatCurrency(parseValue(calc.creditCard))}</div>
                       <div><strong>CC Fee:</strong> {calc.creditCardFee || 'N/A'} ({formatCurrency(parseFee(calc.creditCard, calc.creditCardFee))})</div>
                     </div>
                   </div>
@@ -422,11 +480,12 @@ function App() {
                       <div><strong>Amount:</strong> {formatCurrency(data.houseFeeAmount)}</div>
                     </div>
                     <div>
-                      <div><strong>Ride Along Fee:</strong> {pv(calc.rideAlong)}</div>
+                      <div><strong>Ride Along Fee:</strong> {formatCurrency(parseValue(calc.rideAlong))}</div>
                       <div><strong>Per Person:</strong> {formatCurrency(data.rideAlongFeePerPerson)}</div>
                     </div>
                     <div>
-                      <div><strong>Ride Along Bonus:</strong> {pv(calc.rideAlongBonus)}</div>
+                      <div><strong>Ride Along Bonus:</strong> {formatCurrency(parseValue(calc.rideAlongBonus))}</div>
+                      <div><strong>CC Fee Per Person:</strong> {formatCurrency(data.creditCardFeePerPerson)}</div>
                     </div>
                   </div>
                 </div>
@@ -451,7 +510,7 @@ function App() {
 
                 <div className="mb-4 bg-yellow-50 border-2 border-yellow-400 rounded p-4">
                   <h3 className="font-bold text-lg mb-3 text-center">TEAM PAYOUTS</h3>
-
+                  
                   {parseValue(calc.numVets) > 0 && (
                     <div className="grid grid-cols-3 gap-4 mb-3">
                       <div className="text-center">
@@ -535,7 +594,6 @@ function App() {
         </div>
       )}
 
-      {/* PRINT: full report view */}
       {showReport && (
         <div className="print-report bg-white p-4">
           <h1 className="text-xl font-bold text-center mb-4">ALTA CAL PROFIT SHARE - PAYOUT REPORT</h1>
@@ -576,7 +634,7 @@ function App() {
                 const profit = calc.afterJobCost - calc.finalTotalVetsPayout - calc.finalTotalRepsPayout - calc.totalRideAlongPayout;
                 const hasVets = calculators.some(c => parseValue(c.numVets) > 0);
                 const hasReps = calculators.some(c => parseValue(c.numReps) > 0);
-                const hasRA   = calculators.some(c => parseValue(c.numRideAlongs) > 0);
+                const hasRideAlongs = calculators.some(c => parseValue(c.numRideAlongs) > 0);
                 return (
                   <tr key={index} className="border-b border-gray-400">
                     <td className="border border-black p-1">{index + 1}</td>
@@ -584,21 +642,21 @@ function App() {
                     <td className="border border-black p-1">{data.jobNumber || 'N/A'}</td>
                     {hasVets && (
                       <>
-                        <td className="border border-black p-1 text-right">{parseValue(data.numVets) || ''}</td>
+                        <td className="border border-black p-1 text-right">{parseValue(data.numVets) > 0 ? parseValue(data.numVets) : ''}</td>
                         <td className="border border-black p-1 text-right">{parseValue(data.numVets) > 0 ? formatCurrency(calc.finalPerVetPayout) : ''}</td>
                         <td className="border border-black p-1 text-right bg-green-50 font-bold">{parseValue(data.numVets) > 0 ? formatCurrency(calc.finalTotalVetsPayout) : ''}</td>
                       </>
                     )}
                     {hasReps && (
                       <>
-                        <td className="border border-black p-1 text-right">{parseValue(data.numReps) || ''}</td>
+                        <td className="border border-black p-1 text-right">{parseValue(data.numReps) > 0 ? parseValue(data.numReps) : ''}</td>
                         <td className="border border-black p-1 text-right">{parseValue(data.numReps) > 0 ? formatCurrency(calc.finalPerRepPayout) : ''}</td>
                         <td className="border border-black p-1 text-right bg-purple-50 font-bold">{parseValue(data.numReps) > 0 ? formatCurrency(calc.finalTotalRepsPayout) : ''}</td>
                       </>
                     )}
-                    {hasRA && (
+                    {hasRideAlongs && (
                       <>
-                        <td className="border border-black p-1 text-right">{parseValue(data.numRideAlongs) || ''}</td>
+                        <td className="border border-black p-1 text-right">{parseValue(data.numRideAlongs) > 0 ? parseValue(data.numRideAlongs) : ''}</td>
                         <td className="border border-black p-1 text-right">{parseValue(data.numRideAlongs) > 0 ? formatCurrency(calc.perRideAlongPayout) : ''}</td>
                         <td className="border border-black p-1 text-right bg-red-50 font-bold">{parseValue(data.numRideAlongs) > 0 ? formatCurrency(calc.totalRideAlongPayout) : ''}</td>
                       </>
@@ -610,38 +668,87 @@ function App() {
               })}
               <tr className="bg-yellow-100 font-bold border-t-4 border-black">
                 <td colSpan="3" className="border border-black p-1 text-right">TOTALS:</td>
-                {calculators.some(c => parseValue(c.numVets) > 0) && (<><td colSpan="2" className="border border-black p-1"></td><td className="border border-black p-1 text-right bg-green-100">{formatCurrency(totalsData.totalVetPayout)}</td></>)}
-                {calculators.some(c => parseValue(c.numReps) > 0) && (<><td colSpan="2" className="border border-black p-1"></td><td className="border border-black p-1 text-right bg-purple-100">{formatCurrency(totalsData.totalRepPayout)}</td></>)}
-                {calculators.some(c => parseValue(c.numRideAlongs) > 0) && (<><td colSpan="2" className="border border-black p-1"></td><td className="border border-black p-1 text-right bg-red-100">{formatCurrency(totalsData.totalRideAlongPayout)}</td></>)}
-                <td className="border border-black p-1 text-right bg-green-300">{formatCurrency(totalsData.totalCombinedPayout)}</td>
-                <td className="border border-black p-1 text-right bg-yellow-200">{formatCurrency(totalsData.totalProfit)}</td>
+                {calculators.some(c => parseValue(c.numVets) > 0) && (
+                  <>
+                    <td colSpan="2" className="border border-black p-1"></td>
+                    <td className="border border-black p-1 text-right bg-green-100">{formatCurrency(totals.totalVetPayout)}</td>
+                  </>
+                )}
+                {calculators.some(c => parseValue(c.numReps) > 0) && (
+                  <>
+                    <td colSpan="2" className="border border-black p-1"></td>
+                    <td className="border border-black p-1 text-right bg-purple-100">{formatCurrency(totals.totalRepPayout)}</td>
+                  </>
+                )}
+                {calculators.some(c => parseValue(c.numRideAlongs) > 0) && (
+                  <>
+                    <td colSpan="2" className="border border-black p-1"></td>
+                    <td className="border border-black p-1 text-right bg-red-100">{formatCurrency(totals.totalRideAlongPayout)}</td>
+                  </>
+                )}
+                <td className="border border-black p-1 text-right bg-green-300">{formatCurrency(totals.totalCombinedPayout)}</td>
+                <td className="border border-black p-1 text-right bg-yellow-200">{formatCurrency(totals.totalProfit)}</td>
               </tr>
             </tbody>
           </table>
           <div className="no-print mt-4 text-center">
-            <button onClick={() => setShowReport(false)} className="bg-gray-600 text-white font-bold py-3 px-8 rounded-lg">CLOSE REPORT</button>
+            <button
+              onClick={() => setShowReport(false)}
+              className="bg-gray-600 text-white font-bold py-3 px-8 rounded-lg"
+            >
+              CLOSE REPORT
+            </button>
           </div>
         </div>
       )}
-
-      {/* MAIN UI */}
       {!showReport && printSingleCalc === null && (
         <div className="max-w-full mx-auto">
           <div className="bg-white rounded-lg shadow-lg p-6 mb-6 border-4 border-blue-500">
             <div className="flex justify-between items-center mb-6">
               <h1 className="text-3xl font-bold text-blue-800">ALTA CAL PROFIT SHARE</h1>
               <div className="flex gap-3">
-                <Btn className="bg-purple-600 hover:bg-purple-700" onClick={()=>setShowSavedReports(true)}>SAVED REPORTS</Btn>
-                <Btn className="bg-green-600 hover:bg-green-700" onClick={()=>setShowSaveDialog(true)}>SAVE REPORT</Btn>
-                <Btn className="bg-blue-600 hover:bg-blue-700" onClick={()=>setShowReport(true)}>PRINT REPORT</Btn>
+                <button
+                  onClick={() => setShowSavedReports(true)}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg"
+                >
+                  SAVED REPORTS
+                </button>
+                <button
+                  onClick={() => setShowSaveDialog(true)}
+                  className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg"
+                >
+                  SAVE REPORT
+                </button>
+                <button
+                  onClick={() => setShowReport(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2"
+                >
+                  <Printer size={24} />
+                  PRINT REPORT
+                </button>
               </div>
             </div>
             <div className="grid grid-cols-5 gap-4">
-              <Summary title="TOTAL VET PAYOUT" value={formatCurrency(totals.totalVetPayout)} bg="from-green-400 to-green-600" />
-              <Summary title="TOTAL REP PAYOUT" value={formatCurrency(totals.totalRepPayout)} bg="from-purple-400 to-purple-600" />
-              <Summary title="COMBINED PAYOUT"  value={formatCurrency(totals.totalCombinedPayout)} bg="from-blue-400 to-blue-600" />
-              <Summary title="RIDE ALONG PAYOUT" value={formatCurrency(totals.totalRideAlongPayout)} bg="from-red-400 to-red-600" />
-              <Summary title="TOTAL PROFIT" value={formatCurrency(totals.totalProfit)} bg="from-yellow-400 to-orange-500" />
+              <div className="bg-gradient-to-br from-green-400 to-green-600 p-6 rounded-lg shadow-lg text-white">
+                <div className="text-sm font-bold mb-2">TOTAL VET PAYOUT</div>
+                <div className="text-3xl font-bold">{formatCurrency(totals.totalVetPayout)}</div>
+              </div>
+              <div className="bg-gradient-to-br from-purple-400 to-purple-600 p-6 rounded-lg shadow-lg text-white">
+                <div className="text-sm font-bold mb-2">TOTAL REP PAYOUT</div>
+                <div className="text-3xl font-bold">{formatCurrency(totals.totalRepPayout)}</div>
+              </div>
+              <div className="bg-gradient-to-br from-blue-400 to-blue-600 p-6 rounded-lg shadow-lg text-white">
+                <div className="text-sm font-bold mb-2">COMBINED PAYOUT</div>
+                <div className="text-3xl font-bold">{formatCurrency(totals.totalCombinedPayout)}</div>
+              </div>
+              <div className="bg-gradient-to-br from-red-400 to-red-600 p-6 rounded-lg shadow-lg text-white">
+                <div className="text-sm font-bold mb-2">RIDE ALONG PAYOUT</div>
+                <div className="text-3xl font-bold">{formatCurrency(totals.totalRideAlongPayout)}</div>
+              </div>
+              <div className="bg-gradient-to-br from-yellow-400 to-orange-500 p-6 rounded-lg shadow-lg text-white">
+                <div className="text-sm font-bold mb-2">TOTAL PROFIT</div>
+                <div className="text-3xl font-bold">{formatCurrency(totals.totalProfit)}</div>
+              </div>
             </div>
           </div>
 
@@ -653,128 +760,389 @@ function App() {
                   <button
                     onClick={() => setCalculators(calculators.filter(c => c.id !== calc.id))}
                     className="absolute -top-3 -right-3 bg-red-600 text-white rounded-full p-2 hover:bg-red-700 z-10 shadow-lg"
-                    title="Remove"
-                  >×</button>
+                  >
+                    <X size={20} />
+                  </button>
                 )}
-
+                
                 <div className="bg-blue-300 text-center py-2 border-b-2 border-black flex justify-between items-center px-4">
-                  <div className="w-8" />
+                  <div className="w-8"></div>
                   <h2 className="text-lg font-bold">CALCULATOR #{index + 1}</h2>
-                  <Btn className="bg-blue-600 hover:bg-blue-700 py-1 px-3" onClick={()=>setPrintSingleCalc(index)}>PRINT</Btn>
+                  <button
+                    onClick={() => setPrintSingleCalc(index)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded flex items-center gap-1"
+                  >
+                    <Printer size={16} />
+                    PRINT
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 border-b-2 border-black">
-                  <PlainTextInput i={index} field="customerName" label="CUSTOMER NAME" value={calc.customerName} onChange={(v,e)=>update(index,'customerName',v,e)} placeholder="Enter customer name" />
-                  <PlainTextInput i={index} field="jobNumber" label="JOB NUMBER" value={calc.jobNumber} onChange={(v,e)=>update(index,'jobNumber',v,e)} placeholder="Enter job number" />
+                  <div>
+                    <label className="text-sm font-bold text-gray-700 mb-1 block">CUSTOMER NAME</label>
+                    <input
+                      type="text"
+                      value={calc.customerName || ''}
+                      onChange={(e) => {
+                        const newCalcs = [...calculators];
+                        newCalcs[index].customerName = e.target.value;
+                        setCalculators(newCalcs);
+                      }}
+                      className="w-full border-2 border-gray-300 px-3 py-2 rounded"
+                      placeholder="Enter customer name"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-gray-700 mb-1 block">JOB NUMBER</label>
+                    <input
+                      type="text"
+                      value={calc.jobNumber || ''}
+                      onChange={(e) => {
+                        const newCalcs = [...calculators];
+                        newCalcs[index].jobNumber = e.target.value;
+                        setCalculators(newCalcs);
+                      }}
+                      className="w-full border-2 border-gray-300 px-3 py-2 rounded"
+                      placeholder="Enter job number"
+                    />
+                  </div>
                 </div>
 
                 <div className="p-6 space-y-6">
-                  <Section title="CONTRACT & PAYMENT" color="blue">
+                  <div className="bg-blue-50 border-4 border-blue-400 rounded-lg p-4">
+                    <h3 className="text-xl font-bold text-blue-900 mb-4 text-center">CONTRACT & PAYMENT</h3>
                     <div className="grid grid-cols-3 gap-4">
-                      <MoneyInput i={index} field="contractAmount" label="CONTRACT AMOUNT" value={calc.contractAmount} onChange={(v,e)=>update(index,'contractAmount',v,e)} />
-                      <MoneyInput i={index} field="cashCheck" label="CASH/CHECK" value={calc.cashCheck} onChange={(v,e)=>update(index,'cashCheck',v,e)} />
-                      <MoneyInput i={index} field="laborMaterial" label="LABOR & MATERIAL" value={calc.laborMaterial} onChange={(v,e)=>update(index,'laborMaterial',v,e)} />
+                      <div>
+                        <label className="block text-sm font-bold mb-2">CONTRACT AMOUNT</label>
+                        <div className="flex items-center bg-white border-2 rounded px-3 py-3">
+                          <span className="mr-2">$</span>
+                          <input
+                            type="text"
+                            value={calc.contractAmount}
+                            onChange={(e) => {
+                              const newCalcs = [...calculators];
+                              newCalcs[index].contractAmount = e.target.value.replace(/[^0-9.]/g, '');
+                              setCalculators(newCalcs);
+                            }}
+                            className="w-full text-right focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold mb-2">CASH/CHECK</label>
+                        <div className="flex items-center bg-white border-2 rounded px-3 py-3">
+                          <span className="mr-2">$</span>
+                          <input
+                            type="text"
+                            value={calc.cashCheck}
+                            onChange={(e) => {
+                              const newCalcs = [...calculators];
+                              newCalcs[index].cashCheck = e.target.value.replace(/[^0-9.]/g, '');
+                              setCalculators(newCalcs);
+                            }}
+                            className="w-full text-right focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold mb-2">LABOR & MATERIAL</label>
+                        <div className="flex items-center bg-white border-2 rounded px-3 py-3">
+                          <span className="mr-2">$</span>
+                          <input
+                            type="text"
+                            value={calc.laborMaterial}
+                            onChange={(e) => {
+                              const newCalcs = [...calculators];
+                              newCalcs[index].laborMaterial = e.target.value.replace(/[^0-9.]/g, '');
+                              setCalculators(newCalcs);
+                            }}
+                            className="w-full text-right focus:outline-none"
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </Section>
+                  </div>
 
-                  <Section title="FINANCE INFO" color="green">
+                  <div className="bg-green-50 border-4 border-green-400 rounded-lg p-4">
+                    <h3 className="text-xl font-bold text-green-900 mb-4 text-center">FINANCE INFO</h3>
                     <div className="grid grid-cols-2 gap-6">
                       <div>
-                        <MoneyInput i={index} field="financeAmount" label="FINANCE AMOUNT" value={calc.financeAmount} onChange={(v,e)=>update(index,'financeAmount',v,e)} />
-                        <div className="mt-2">
-                          <TextInput i={index} field="dealerFee" label="DEALER FEE" value={calc.dealerFee} onChange={(v,e)=>update(index,'dealerFee',v,e)} right="" />
-                          {calc.dealerFee && parseValue(calc.financeAmount)>0 && (
-                            <div className="text-center text-sm font-bold text-green-700 mt-1">
-                              {formatCurrency(parseFee(calc.financeAmount, calc.dealerFee))}
-                            </div>
-                          )}
+                        <label className="block text-sm font-bold mb-2">FINANCE AMOUNT</label>
+                        <div className="flex items-center bg-white border-2 rounded px-3 py-3 mb-2">
+                          <span className="mr-2">$</span>
+                          <input
+                            type="text"
+                            value={calc.financeAmount}
+                            onChange={(e) => {
+                              const newCalcs = [...calculators];
+                              newCalcs[index].financeAmount = e.target.value.replace(/[^0-9.]/g, '');
+                              setCalculators(newCalcs);
+                            }}
+                            className="w-full text-right focus:outline-none"
+                          />
                         </div>
+                        <label className="block text-sm font-bold mb-2">DEALER FEE</label>
+                        <input
+                          type="text"
+                          value={calc.dealerFee}
+                          onChange={(e) => {
+                            const newCalcs = [...calculators];
+                            newCalcs[index].dealerFee = e.target.value;
+                            setCalculators(newCalcs);
+                          }}
+                          className="w-full text-right bg-white border-2 rounded px-3 py-3"
+                          placeholder="3.5% or 150"
+                        />
+                        {calc.dealerFee && parseValue(calc.financeAmount) > 0 && (
+                          <div className="text-center text-sm font-bold text-green-700 mt-1">
+                            {formatCurrency(parseFee(calc.financeAmount, calc.dealerFee))}
+                          </div>
+                        )}
                       </div>
                       <div>
-                        <MoneyInput i={index} field="creditCard" label="CREDIT CARD" value={calc.creditCard} onChange={(v,e)=>update(index,'creditCard',v,e)} />
-                        <div className="mt-2">
-                          <TextInput i={index} field="creditCardFee" label="CC FEE %" value={calc.creditCardFee} onChange={(v,e)=>update(index,'creditCardFee',v,e)} right="" />
-                          {calc.creditCardFee && parseValue(calc.creditCard)>0 && (
-                            <div className="text-center text-sm font-bold text-green-700 mt-1">
-                              {formatCurrency(parseFee(calc.creditCard, calc.creditCardFee))}
-                            </div>
-                          )}
+                        <label className="block text-sm font-bold mb-2">CREDIT CARD</label>
+                        <div className="flex items-center bg-white border-2 rounded px-3 py-3 mb-2">
+                          <span className="mr-2">$</span>
+                          <input
+                            type="text"
+                            value={calc.creditCard}
+                            onChange={(e) => {
+                              const newCalcs = [...calculators];
+                              newCalcs[index].creditCard = e.target.value.replace(/[^0-9.]/g, '');
+                              setCalculators(newCalcs);
+                            }}
+                            className="w-full text-right focus:outline-none"
+                          />
+                        </div>
+                        <label className="block text-sm font-bold mb-2">CC FEE %</label>
+                        <input
+                          type="text"
+                          value={calc.creditCardFee}
+                          onChange={(e) => {
+                            const newCalcs = [...calculators];
+                            newCalcs[index].creditCardFee = e.target.value;
+                            setCalculators(newCalcs);
+                          }}
+                          className="w-full text-right bg-white border-2 rounded px-3 py-3"
+                        />
+                        {calc.creditCardFee && parseValue(calc.creditCard) > 0 && (
+                          <div className="text-center text-sm font-bold text-green-700 mt-1">
+                            {formatCurrency(parseFee(calc.creditCard, calc.creditCardFee))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-orange-50 border-4 border-orange-400 rounded-lg p-4">
+                    <h3 className="text-xl font-bold text-orange-900 mb-4 text-center">FEES & BONUSES</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-bold mb-2">HOUSE FEE %</label>
+                        <div className="flex items-center bg-white border-2 rounded px-3 py-3 mb-2">
+                          <input
+                            type="text"
+                            value={calc.houseFeePercent}
+                            onChange={(e) => {
+                              const newCalcs = [...calculators];
+                              newCalcs[index].houseFeePercent = e.target.value.replace(/[^0-9.]/g, '');
+                              setCalculators(newCalcs);
+                            }}
+                            className="w-full text-right focus:outline-none"
+                          />
+                          <span className="ml-2">%</span>
+                        </div>
+                        <div className="text-center text-lg font-bold">{formatCurrency(data.houseFeeAmount)}</div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-red-700 mb-2">RIDE ALONG FEE</label>
+                        <div className="flex items-center bg-red-100 border-2 border-red-400 rounded px-3 py-3 mb-2">
+                          <span className="mr-2">$</span>
+                          <input
+                            type="text"
+                            value={calc.rideAlong}
+                            onChange={(e) => {
+                              const newCalcs = [...calculators];
+                              newCalcs[index].rideAlong = e.target.value.replace(/[^0-9.]/g, '');
+                              setCalculators(newCalcs);
+                            }}
+                            className="w-full text-right focus:outline-none bg-transparent"
+                          />
+                        </div>
+                        <div className="text-center text-sm font-bold text-red-700">Per Person: {formatCurrency(data.rideAlongFeePerPerson)}</div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-red-700 mb-2">RIDE ALONG BONUS</label>
+                        <div className="flex items-center bg-red-100 border-2 border-red-400 rounded px-3 py-3">
+                          <span className="mr-2">$</span>
+                          <input
+                            type="text"
+                            value={calc.rideAlongBonus || ''}
+                            onChange={(e) => {
+                              const newCalcs = [...calculators];
+                              newCalcs[index].rideAlongBonus = e.target.value.replace(/[^0-9.]/g, '');
+                              setCalculators(newCalcs);
+                            }}
+                            className="w-full text-right focus:outline-none bg-transparent"
+                          />
                         </div>
                       </div>
                     </div>
-                  </Section>
+                  </div>
 
-                  <Section title="FEES & BONUSES" color="orange">
+                  <div className="bg-purple-50 border-4 border-purple-400 rounded-lg p-4">
+                    <h3 className="text-xl font-bold text-purple-900 mb-4 text-center">CALCULATED TOTALS</h3>
                     <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <TextInput i={index} field="houseFeePercent" label="HOUSE FEE %" value={calc.houseFeePercent} onChange={(v,e)=>update(index,'houseFeePercent',v,e)} right="%" />
-                        <div className="text-center text-lg font-bold mt-2">{formatCurrency(calculateForOne(calc).houseFeeAmount)}</div>
+                      <div className="bg-white rounded-lg p-4 border-2 text-center">
+                        <div className="text-sm font-bold mb-2">TOTAL AFTER FEES</div>
+                        <div className="text-3xl font-bold">{formatCurrency(data.totalAfterFees)}</div>
                       </div>
-                      <MoneyInput i={index} field="rideAlong" label="RIDE ALONG FEE" value={calc.rideAlong} onChange={(v,e)=>update(index,'rideAlong',v,e)} />
-                      <MoneyInput i={index} field="rideAlongBonus" label="RIDE ALONG BONUS" value={calc.rideAlongBonus} onChange={(v,e)=>update(index,'rideAlongBonus',v,e)} />
-                    </div>
-                  </Section>
-
-                  <Section title="CALCULATED TOTALS" color="purple">
-                    <div className="grid grid-cols-3 gap-4">
-                      <Box label="TOTAL AFTER FEES" value={formatCurrency(data.totalAfterFees)} />
-                      <Box label="VETS PROFIT %" value={`${data.vetRate}%`} />
-                      <Box label="REP PROFIT %" value={`${data.repRate}%`} />
-                    </div>
-                  </Section>
-
-                  <Section title="TEAM PAYOUTS" color="yellow">
-                    <div className="grid grid-cols-3 gap-4">
-                      <NumberInput i={index} field="numVets" label="VETS ON CONTRACT" value={calc.numVets} onChange={(v,e)=>update(index,'numVets',v,e)} />
-                      <Box label="PER VET" value={formatCurrency(data.finalPerVetPayout)} />
-                      <Box label="TOTAL VET PAYOUT" value={formatCurrency(data.finalTotalVetsPayout)} />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-4 mt-4">
-                      <NumberInput i={index} field="numReps" label="REPS ON CONTRACT" value={calc.numReps} onChange={(v,e)=>update(index,'numReps',v,e)} />
-                      <Box label="PER REP" value={formatCurrency(data.finalPerRepPayout)} />
-                      <Box label="TOTAL REP PAYOUT" value={formatCurrency(data.finalTotalRepsPayout)} />
-                    </div>
-
-                    <div className="bg-gradient-to-r from-green-400 to-green-600 rounded-lg p-6 text-center shadow-lg mt-4">
-                      <div className="text-lg font-bold text-white mb-2">COMBINED PAYOUT</div>
-                      <div className="text-4xl font-bold text-white">{formatCurrency(data.combinedPayout)}</div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-4 mt-4">
-                      <NumberInput i={index} field="numRideAlongs" label="RIDE ALONGS ON CONTRACT" value={calc.numRideAlongs||''} onChange={(v,e)=>update(index,'numRideAlongs',v,e)} />
-                      <Box label="PER RIDE ALONG" value={formatCurrency(data.perRideAlongPayout)} />
-                      <Box label="TOTAL RIDE ALONG PAYOUT" value={formatCurrency(data.totalRideAlongPayout)} />
-                    </div>
-
-                    {parseValue(calc.numRideAlongs)>0 && (
-                      <div className="bg-gradient-to-r from-red-400 to-red-600 rounded-lg p-6 text-center shadow-lg mt-4">
-                        <div className="text-lg font-bold text-white mb-2">RIDE ALONG PAYOUT</div>
-                        <div className="text-4xl font-bold text-white">{formatCurrency(data.totalRideAlongPayout)}</div>
+                      <div className="bg-white rounded-lg p-4 border-2 text-center">
+                        <div className="text-sm font-bold mb-2">VETS PROFIT %</div>
+                        <div className="text-3xl font-bold">{data.vetRate}%</div>
                       </div>
-                    )}
-                  </Section>
+                      <div className="bg-white rounded-lg p-4 border-2 text-center">
+                        <div className="text-sm font-bold mb-2">REP PROFIT %</div>
+                        <div className="text-3xl font-bold">{data.repRate}%</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-yellow-50 border-4 border-yellow-400 rounded-lg p-4">
+                    <h3 className="text-xl font-bold text-yellow-900 mb-4 text-center">TEAM PAYOUTS</h3>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-bold mb-2">VETS ON CONTRACT</label>
+                          <input
+                            type="text"
+                            value={calc.numVets}
+                            onChange={(e) => {
+                              const newCalcs = [...calculators];
+                              newCalcs[index].numVets = e.target.value.replace(/[^0-9.]/g, '');
+                              setCalculators(newCalcs);
+                            }}
+                            className="w-full text-center text-xl border-2 rounded px-3 py-3"
+                          />
+                        </div>
+                        {parseValue(calc.numVets) > 0 && (
+                          <>
+                            <div className="bg-green-100 rounded-lg p-6 border-2 border-green-600">
+                              <div className="text-sm font-bold text-center mb-2">PER VET</div>
+                              <div className="text-4xl font-bold text-green-700 text-center">{formatCurrency(data.finalPerVetPayout)}</div>
+                            </div>
+                            <div className="bg-white rounded-lg p-4 border-2 text-center">
+                              <div className="text-sm font-bold mb-2">TOTAL VET PAYOUT</div>
+                              <div className="text-2xl font-bold">{formatCurrency(data.finalTotalVetsPayout)}</div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-bold mb-2">REPS ON CONTRACT</label>
+                          <input
+                            type="text"
+                            value={calc.numReps}
+                            onChange={(e) => {
+                              const newCalcs = [...calculators];
+                              newCalcs[index].numReps = e.target.value.replace(/[^0-9.]/g, '');
+                              setCalculators(newCalcs);
+                            }}
+                            className="w-full text-center text-xl border-2 rounded px-3 py-3"
+                          />
+                        </div>
+                        {parseValue(calc.numReps) > 0 && (
+                          <>
+                            <div className="bg-purple-100 rounded-lg p-6 border-2 border-purple-600">
+                              <div className="text-sm font-bold text-center mb-2">PER REP</div>
+                              <div className="text-4xl font-bold text-purple-700 text-center">{formatCurrency(data.finalPerRepPayout)}</div>
+                            </div>
+                            <div className="bg-white rounded-lg p-4 border-2 text-center">
+                              <div className="text-sm font-bold mb-2">TOTAL REP PAYOUT</div>
+                              <div className="text-2xl font-bold">{formatCurrency(data.finalTotalRepsPayout)}</div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="bg-gradient-to-r from-green-400 to-green-600 rounded-lg p-6 text-center shadow-lg">
+                        <div className="text-lg font-bold text-white mb-2">COMBINED PAYOUT</div>
+                        <div className="text-4xl font-bold text-white">{formatCurrency(data.combinedPayout)}</div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 mt-4">
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-bold mb-2">RIDE ALONGS ON CONTRACT</label>
+                          <input
+                            type="text"
+                            value={calc.numRideAlongs || ''}
+                            onChange={(e) => {
+                              const newCalcs = [...calculators];
+                              newCalcs[index].numRideAlongs = e.target.value.replace(/[^0-9]/g, '');
+                              setCalculators(newCalcs);
+                            }}
+                            className="w-full text-center text-xl border-2 rounded px-3 py-3"
+                          />
+                        </div>
+                        {parseValue(calc.numRideAlongs) > 0 && (
+                          <>
+                            <div className="bg-white rounded-lg p-4 border-2 text-center">
+                              <div className="text-sm font-bold mb-2">PER RIDE ALONG</div>
+                              <div className="text-2xl font-bold">{formatCurrency(data.perRideAlongPayout)}</div>
+                            </div>
+                            <div className="bg-white rounded-lg p-4 border-2 text-center">
+                              <div className="text-sm font-bold mb-2">TOTAL RIDE ALONG PAYOUT</div>
+                              <div className="text-2xl font-bold">{formatCurrency(data.totalRideAlongPayout)}</div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {parseValue(calc.numRideAlongs) > 0 && (
+                        <div className="bg-gradient-to-r from-red-400 to-red-600 rounded-lg p-6 text-center shadow-lg">
+                          <div className="text-lg font-bold text-white mb-2">RIDE ALONG PAYOUT</div>
+                          <div className="text-4xl font-bold text-white">{formatCurrency(data.totalRideAlongPayout)}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             );
           })}
 
           <div className="text-center mt-6">
-            <Btn
-              className="bg-blue-600 hover:bg-blue-700"
-              onClick={()=>{
-                const newId = Math.max(...calculators.map(c=>c.id)) + 1;
+            <button
+              onClick={() => {
+                const newId = Math.max(...calculators.map(c => c.id)) + 1;
                 setCalculators([...calculators, {
                   id: newId,
-                  customerName:'', jobNumber:'', contractAmount:'', cashCheck:'',
-                  financeAmount:'', dealerFee:'', creditCard:'', creditCardFee:'',
-                  houseFeePercent:'', laborMaterial:'', rideAlong:'', rideAlongBonus:'',
-                  numRideAlongs:'', numVets:'', numReps:''
+                  customerName: '',
+                  jobNumber: '',
+                  contractAmount: '',
+                  cashCheck: '',
+                  financeAmount: '',
+                  dealerFee: '',
+                  creditCard: '',
+                  creditCardFee: '',
+                  houseFeePercent: '',
+                  laborMaterial: '',
+                  rideAlong: '',
+                  rideAlongBonus: '',
+                  numRideAlongs: '',
+                  numVets: '',
+                  numReps: ''
                 }]);
               }}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-full shadow-lg flex items-center gap-3 mx-auto text-xl"
             >
+              <Plus size={28} />
               ADD NEW FILE
-            </Btn>
+            </button>
           </div>
         </div>
       )}
